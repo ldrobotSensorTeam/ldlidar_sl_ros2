@@ -35,26 +35,14 @@ endif()
 # user add
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/core/
-  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/dataprocess/
-  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/filter/
-  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/logger/
-  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/serialcom/
+  ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/include/
 )
 
-file(GLOB  LDLIDAR_DRI_CORE ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/core/*.cpp)
-file(GLOB  LDLIDAR_DRI_DATARPC ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/dataprocess/*.cpp)
-file(GLOB  LDLIDAR_DRI_FILTER ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/filter/*.cpp)
-file(GLOB  LDLIDAR_DRI_LOGGER ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/logger/*.cpp)
-file(GLOB  LDLIDAR_DRI_SERIAL ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/serialcom/*.cpp)
+file(GLOB  LDLIDAR_DRI ${CMAKE_CURRENT_SOURCE_DIR}/ldlidar_driver/src/*.cpp)
 
 add_executable(${PROJECT_NAME}_node  
   ${CMAKE_CURRENT_SOURCE_DIR}/src/demo.cpp 
-  ${LDLIDAR_DRI_CORE} 
-  ${LDLIDAR_DRI_DATARPC} 
-  ${LDLIDAR_DRI_FILTER} 
-  ${LDLIDAR_DRI_LOGGER} 
-  ${LDLIDAR_DRI_SERIAL}
+  ${LDLIDAR_DRI} 
 )
 ament_target_dependencies(${PROJECT_NAME}_node rclcpp sensor_msgs geometry_msgs)
 target_link_libraries(${PROJECT_NAME}_node pthread)

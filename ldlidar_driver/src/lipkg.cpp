@@ -19,7 +19,6 @@
  * limitations under the License.
  */
 #include "lipkg.h"
-
 namespace ldlidar {
 
 static const uint8_t CrcTable[256] = {
@@ -56,7 +55,8 @@ uint8_t CalCRC8(const uint8_t *data, uint16_t data_len) {
 }
 
 LiPkg::LiPkg()
-  : typenumber_(LDType::NO_VER),
+  : lidar_measure_freq_(2300),
+    typenumber_(LDType::NO_VER),
     lidarstatus_(LidarStatus::NORMAL),
     lidarerrorcode_(LIDAR_NO_ERROR),
     is_frame_ready_(false),
@@ -66,7 +66,6 @@ LiPkg::LiPkg()
     get_timestamp_(nullptr),
     is_poweron_comm_normal_(false),
     poweron_datapkg_count_(0),
-    first_flag_(true),
     last_pkg_timestamp_(0) {
 
 }
@@ -77,6 +76,18 @@ LiPkg::~LiPkg() {
 
 void LiPkg::SetProductType(LDType typenumber) {
   typenumber_ = typenumber;
+  switch (typenumber) {
+    case LDType::LD_14:
+    case LDType::LD_14P_2300HZ:
+      lidar_measure_freq_ = 2300;
+      break;
+    case LDType::LD_14P_4000HZ:
+      lidar_measure_freq_ = 4000;
+      break;
+    default :
+      lidar_measure_freq_ = 2300;
+      break;
+  }
 }
 
 void LiPkg::SetNoiseFilter(bool is_enable) {
@@ -149,32 +160,32 @@ bool LiPkg::Parse(const uint8_t *data, long len) {
       
       // parse a package is success
       double diff = (datapkg_.end_angle / 100 - datapkg_.start_angle / 100 + 360) % 360;
-      if (diff <= ((double)datapkg_.speed * POINT_PER_PACK / kPointFrequence * 1.5)) {
-        
+      if (diff <= ((double)datapkg_.speed * POINT_PER_PACK / lidar_measure_freq_ * 1.5)) {
+
         if (0 == last_pkg_timestamp_) {
           last_pkg_timestamp_ = get_timestamp_();
-          continue;
-        }
-        uint64_t current_pack_stamp = get_timestamp_();
-        int pkg_point_number = POINT_PER_PACK;
-        double pack_stamp_point_step =  
-            static_cast<double>(current_pack_stamp - last_pkg_timestamp_) / static_cast<double>(pkg_point_number - 1);
-        
-        uint32_t diff =((uint32_t)datapkg_.end_angle + 36000 - (uint32_t)datapkg_.start_angle) % 36000;
-        float step = diff / (POINT_PER_PACK - 1) / 100.0;
-        float start = (double)datapkg_.start_angle / 100.0;
-        PointData data;
-        for (int i = 0; i < POINT_PER_PACK; i++) {
-          data.distance = datapkg_.point[i].distance;
-          data.angle = start + i * step;
-          if (data.angle >= 360.0) {
-            data.angle -= 360.0;
+        } else {
+          uint64_t current_pack_stamp = get_timestamp_();
+          int pkg_point_number = POINT_PER_PACK;
+          double pack_stamp_point_step =  
+              static_cast<double>(current_pack_stamp - last_pkg_timestamp_) / static_cast<double>(pkg_point_number - 1);
+          
+          uint32_t diff = ((uint32_t)datapkg_.end_angle + 36000 - (uint32_t)datapkg_.start_angle) % 36000;
+          float step = diff / (POINT_PER_PACK - 1) / 100.0;
+          float start = (double)datapkg_.start_angle / 100.0;
+          PointData data;
+          for (int i = 0; i < POINT_PER_PACK; i++) {
+            data.distance = datapkg_.point[i].distance;
+            data.angle = start + i * step;
+            if (data.angle >= 360.0) {
+              data.angle -= 360.0;
+            }
+            data.intensity = datapkg_.point[i].intensity;
+            data.stamp = static_cast<uint64_t>(last_pkg_timestamp_ + (pack_stamp_point_step * i));
+            frame_tmp_.push_back(PointData(data.angle, data.distance, data.intensity, data.stamp));
           }
-          data.intensity = datapkg_.point[i].intensity;
-          data.stamp = static_cast<uint64_t>(last_pkg_timestamp_ + (pack_stamp_point_step * i));
-          frame_tmp_.push_back(PointData(data.angle, data.distance, data.intensity, data.stamp));
+          last_pkg_timestamp_ = current_pack_stamp; //// update last pkg timestamp
         }
-        last_pkg_timestamp_ = current_pack_stamp; //// update last pkg timestamp
       }
     }
   }
@@ -196,7 +207,7 @@ bool LiPkg::AssemblePacket() {
     // wait for enough data, need enough data to show a circle
 	// enough data has been obtained
     if ((n.angle < 20.0) && (last_angle > 340.0)) {
-      if ((count * GetSpeed()) > (kPointFrequence * 1.4)) {
+      if ((count * GetSpeed()) > (lidar_measure_freq_ * 1.4)) {
         if (count >= (int)frame_tmp_.size()) {
           frame_tmp_.clear();
         } else {
@@ -209,8 +220,9 @@ bool LiPkg::AssemblePacket() {
       SlTransform trans(typenumber_);
       data = trans.Transform(data); // transform raw data to stantard data  
     
-      if (is_noise_filter_) {
-        std::sort(data.begin(), data.end(), [](PointData a, PointData b) { return a.angle < b.angle;});
+      if (is_noise_filter_ && \
+        (typenumber_ != ldlidar::LDType::LD_14P_2300HZ) && \
+        (typenumber_ != ldlidar::LDType::LD_14P_4000HZ)) {
         Slbf sb(speed_);
         tmp = sb.NearFilter(data); // filter noise point
       } else {
@@ -220,13 +232,7 @@ bool LiPkg::AssemblePacket() {
       std::sort(tmp.begin(), tmp.end(), [](PointData a, PointData b) { return a.stamp < b.stamp; });
       if (tmp.size() > 0) {
         SetLaserScanData(tmp);
-        
-
-        if (first_flag_) {
-          first_flag_ = false;
-        } else {
-          SetFrameReady();
-        }
+        SetFrameReady();
 
         if (count >= (int)frame_tmp_.size()) {
           frame_tmp_.clear();
@@ -238,7 +244,7 @@ bool LiPkg::AssemblePacket() {
     }
     count++;
 
-    if ((count * GetSpeed()) > (kPointFrequence * 2)) {
+    if ((count * GetSpeed()) > (lidar_measure_freq_ * 2)) {
       if (count >= (int)frame_tmp_.size()) {
         frame_tmp_.clear();
       } else {
@@ -322,52 +328,6 @@ Points2D LiPkg::GetLaserScanData(void) {
   std::lock_guard<std::mutex> lg(mutex_lock2_);
   return lidar_frame_data_; 
 }
-
-// BUG  this function is unstable .
-// void LiPkg::AnalysisLidarIsBlocking(uint16_t lidar_speed_val){
-//   static int16_t judge_block_cnt = 0;
-//   static uint16_t last_speed = 0;
-//   uint16_t curr_speed = lidar_speed_val;
-//   if ((curr_speed == 0) && (last_speed == 0)) {
-//     judge_block_cnt++;
-//   } else {
-//     judge_block_cnt--;
-//     if (judge_block_cnt <= 0) {
-//       judge_block_cnt = 0;
-//     }
-//   }
-//   if (judge_block_cnt >= 5) {
-//     SetLidarStatus(LidarStatus::ERROR);
-//     SetLidarErrorCode(LIDAR_ERROR_BLOCKING);
-//   } else {
-//     SetLidarStatus(LidarStatus::NORMAL);
-//     SetLidarErrorCode(LIDAR_NO_ERROR);
-//   }
-//   last_speed = curr_speed;
-// }
-
-// BUG  this function is unstable .
-// void LiPkg::AnalysisLidarIsOcclusion(Points2D& lidar_data) {
-
-//   uint16_t no_occlusion_count = 0;
-//   for (auto point: lidar_data) {
-//     if (point.distance != 0) {
-//       no_occlusion_count++;
-//     }
-//   }
-
-//   if (no_occlusion_count <= 5) {
-//     SetLidarStatus(LidarStatus::ERROR);
-//     if (GetLidarErrorCode() == LIDAR_ERROR_BLOCKING) {
-//       SetLidarErrorCode(LIDAR_ERROR_BLOCKING_AND_OCCLUSION);
-//     } else {
-//       SetLidarErrorCode(LIDAR_ERROR_OCCLUSION);
-//     }
-//   } else {
-//     SetLidarStatus(LidarStatus::NORMAL);
-//     SetLidarErrorCode(LIDAR_NO_ERROR);
-//   }
-// }
 
 }  // namespace ldlidar
 

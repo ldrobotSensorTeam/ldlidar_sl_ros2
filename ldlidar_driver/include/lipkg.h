@@ -90,11 +90,10 @@ public:
     lidarstatus_ = LidarStatus::NORMAL;
     lidarerrorcode_ = LIDAR_NO_ERROR;
     last_pkg_timestamp_ = 0;
-    first_flag_ = true;
   }
 
 private:
-  const int kPointFrequence = 2300;
+  int lidar_measure_freq_;
   LDType typenumber_;
   LidarStatus lidarstatus_;
   uint8_t lidarerrorcode_;
@@ -105,7 +104,6 @@ private:
   std::function<uint64_t(void)> get_timestamp_;
   bool is_poweron_comm_normal_;
   uint8_t poweron_datapkg_count_;
-  bool first_flag_;
   uint64_t last_pkg_timestamp_;
 
   LiDARFrameTypeDef datapkg_;

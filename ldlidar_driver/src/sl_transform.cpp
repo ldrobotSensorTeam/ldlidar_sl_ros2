@@ -36,6 +36,8 @@ namespace ldlidar {
 SlTransform::SlTransform(LDType version, bool to_right_hand) {
   switch (version) {
     case LDType::LD_14:
+    case LDType::LD_14P_2300HZ:
+    case LDType::LD_14P_4000HZ:
       offset_x_ = 5.9;
       offset_y_ = -18.975571;
       break;
@@ -86,6 +88,8 @@ Points2D SlTransform::Transform(const Points2D &data) {
     
     switch (version_) {
       case LDType::LD_14:
+      case LDType::LD_14P_2300HZ:
+      case LDType::LD_14P_4000HZ:
         if (n.distance == 0) {
           tmp2.push_back(PointData(angle, n.distance, 0, n.stamp));
         } else {

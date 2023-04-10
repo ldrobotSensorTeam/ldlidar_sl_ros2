@@ -41,6 +41,8 @@ namespace ldlidar {
 enum class LDType {
   NO_VER,
   LD_14, 
+  LD_14P_2300HZ,
+  LD_14P_4000HZ,
 };
 
 enum class LidarStatus {

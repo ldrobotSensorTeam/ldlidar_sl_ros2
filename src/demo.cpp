@@ -72,9 +72,9 @@ int main(int argc, char **argv) {
   node->get_parameter("angle_crop_min", setting.angle_crop_min);
   node->get_parameter("angle_crop_max", setting.angle_crop_max);
 
-  ldlidar::LDLidarDriver* laser_ldlidar = new ldlidar::LDLidarDriver();
+  ldlidar::LDLidarDriver* lidar_drv = new ldlidar::LDLidarDriver();
 
-  RCLCPP_INFO(node->get_logger(), "LDLiDAR SDK Pack Version is:%s", laser_ldlidar->GetLidarSdkVersionNumber().c_str());
+  RCLCPP_INFO(node->get_logger(), "LDLiDAR SDK Pack Version is:%s", lidar_drv->GetLidarSdkVersionNumber().c_str());
   RCLCPP_INFO(node->get_logger(), "ROS2 param input:");
   RCLCPP_INFO(node->get_logger(), "<laser_scan_topic_name>: %s", laser_scan_topic_name.c_str());
   RCLCPP_INFO(node->get_logger(), "<point_cloud_2d_topic_name>: %s", point_cloud_2d_topic_name.c_str());
@@ -91,25 +91,27 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  laser_ldlidar->RegisterGetTimestampFunctional(std::bind(&GetTimestamp)); 
+  lidar_drv->RegisterGetTimestampFunctional(std::bind(&GetTimestamp)); 
 
-  laser_ldlidar->EnableFilterAlgorithnmProcess(true);
+  lidar_drv->EnableFilterAlgorithnmProcess(true);
   
-  if(product_name == "LDLiDAR_LD14") {
+  if(!strcmp(product_name.c_str(), "LDLiDAR_LD14")) {
     lidartypename = ldlidar::LDType::LD_14;
-  } else{
+  } else if(!strcmp(product_name.c_str(), "LDLiDAR_LD14P")) {
+    lidartypename = ldlidar::LDType::LD_14P_4000HZ;  // the measurement frequency of lidar is 4kHz.
+  } else {
     RCLCPP_ERROR(node->get_logger(),"Error, input param <product_name> is fail!!");
     exit(EXIT_FAILURE);
   }
 
-  if (laser_ldlidar->Start(lidartypename, port_name, serial_baudrate)) {
+  if (lidar_drv->Start(lidartypename, port_name, serial_baudrate)) {
     RCLCPP_INFO(node->get_logger(), "ldlidar node start is success");
   } else {
     RCLCPP_ERROR(node->get_logger(), "ldlidar node start is fail");
     exit(EXIT_FAILURE);
   }
 
-  if (laser_ldlidar->WaitLidarCommConnect(3500)) {
+  if (lidar_drv->WaitLidarCommConnect(3500)) {
     RCLCPP_INFO(node->get_logger(), "ldlidar communication is normal.");
   } else {
     RCLCPP_ERROR(node->get_logger(), "ldlidar communication is abnormal.");
@@ -131,17 +133,17 @@ int main(int argc, char **argv) {
 
   while (rclcpp::ok() && ldlidar::LDLidarDriver::IsOk()) {
   
-    switch (laser_ldlidar->GetLaserScanData(laser_scan_points, 1500)){
+    switch (lidar_drv->GetLaserScanData(laser_scan_points, 1500)){
       case ldlidar::LidarStatus::NORMAL: {
         double lidar_scan_freq = 0;
-        laser_ldlidar->GetLidarScanFreq(lidar_scan_freq);
+        lidar_drv->GetLidarScanFreq(lidar_scan_freq);
         ToLaserscanMessagePublish(laser_scan_points, lidar_scan_freq, setting, node, lidar_pub_laserscan);
         ToSensorPointCloudMessagePublish(laser_scan_points, setting, node, lidar_pub_pointcloud);
         break;
       }
       case ldlidar::LidarStatus::DATA_TIME_OUT: {
         RCLCPP_ERROR(node->get_logger(), "ldlidar point cloud data publish time out, please check your lidar device.");
-        laser_ldlidar->Stop();
+        lidar_drv->Stop();
         break;
       }
       case ldlidar::LidarStatus::DATA_WAIT: {
@@ -154,10 +156,10 @@ int main(int argc, char **argv) {
     r.sleep();
   }
 
-  laser_ldlidar->Stop();
+  lidar_drv->Stop();
 
-  delete laser_ldlidar;
-  laser_ldlidar = nullptr;
+  delete lidar_drv;
+  lidar_drv = nullptr;
 
   RCLCPP_INFO(node->get_logger(), "this node of ldlidar_published is end");
   rclcpp::shutdown();
